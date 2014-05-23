@@ -44,4 +44,4 @@ typedef struct
     BINARY terminator[2];
 } AD_SYNC_RESPONSE;
 
-int AnalogDevicesDownload(ISP_ENVIRONMENT *IspEnvironment);
+int AnalogDevicesDownload(ISP_ENVIRONMENT ^IspEnvironment);

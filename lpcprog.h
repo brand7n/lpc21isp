@@ -119,9 +119,9 @@ typedef struct
     const CHIP_VARIANT   ChipVariant;
 } LPC_DEVICE_TYPE;
 
-int NxpDownload(ISP_ENVIRONMENT *IspEnvironment);
+int NxpDownload(ISP_ENVIRONMENT ^IspEnvironment);
 
-unsigned long ReturnValueLpcRamStart(ISP_ENVIRONMENT *IspEnvironment);
+unsigned long ReturnValueLpcRamStart(ISP_ENVIRONMENT ^IspEnvironment);
 
-unsigned long ReturnValueLpcRamBase(ISP_ENVIRONMENT *IspEnvironment);
+unsigned long ReturnValueLpcRamBase(ISP_ENVIRONMENT ^IspEnvironment);
 

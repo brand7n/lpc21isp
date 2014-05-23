@@ -212,7 +212,7 @@ static LPC_DEVICE_TYPE LPCtypes[] =
 *   This function is visible from outside if COMPILE_FOR_LPC21
 */
 
-static int SendAndVerify(ISP_ENVIRONMENT *IspEnvironment, const char *Command,
+static int SendAndVerify(ISP_ENVIRONMENT ^IspEnvironment, const char *Command,
                                  char *AnswerBuffer, int AnswerLength)
 {
     unsigned long realsize;
@@ -380,7 +380,7 @@ static unsigned char GetAndReportErrorNumber(const char *Answer)
 }
 
 
-int NxpDownload(ISP_ENVIRONMENT *IspEnvironment)
+int NxpDownload(ISP_ENVIRONMENT ^IspEnvironment)
 {
     unsigned long realsize;
     char Answer[128];
@@ -481,7 +481,7 @@ int NxpDownload(ISP_ENVIRONMENT *IspEnvironment)
 #endif
 #endif
 
-            DebugPrintf(2, ".");
+            //DebugPrintf(2, ".");
             SendComPort(IspEnvironment, "?");
 
             memset(Answer,0,sizeof(Answer));
@@ -830,7 +830,7 @@ int NxpDownload(ISP_ENVIRONMENT *IspEnvironment)
                 return (WRONG_ANSWER_PREP + GetAndReportErrorNumber(Answer));
             }
 
-            DebugPrintf(2, ".");
+            //DebugPrintf(2, ".");
             fflush(stdout);
             if (IspEnvironment->WipeDevice == 0 && (Sector!=0)) //Sector 0 already erased
             {
@@ -842,7 +842,7 @@ int NxpDownload(ISP_ENVIRONMENT *IspEnvironment)
                     return (WRONG_ANSWER_ERAS + GetAndReportErrorNumber(Answer));
                 }
 
-                DebugPrintf(2, ".");
+                //DebugPrintf(2, ".");
                 fflush(stdout);
             }
         }
@@ -890,7 +890,7 @@ int NxpDownload(ISP_ENVIRONMENT *IspEnvironment)
                 return (WRONG_ANSWER_WRIT + GetAndReportErrorNumber(Answer));
             }
 
-            DebugPrintf(2, ".");
+            //DebugPrintf(2, ".");
             fflush(stdout);
 
             block_CRC = 0;
@@ -901,7 +901,7 @@ int NxpDownload(ISP_ENVIRONMENT *IspEnvironment)
             {
                 for (Block = 0; Block < 4; Block++)  // Each block 45 bytes
                 {
-                    DebugPrintf(2, ".");
+                    //DebugPrintf(2, ".");
                     fflush(stdout);
 
 #if defined INTEGRATED_IN_WIN_APP
@@ -1158,9 +1158,13 @@ int NxpDownload(ISP_ENVIRONMENT *IspEnvironment)
 
     tDoneUpload = time(NULL);
     if (IspEnvironment->Verify)
+	{
         DebugPrintf(2, "Download Finished and Verified correct... taking %d seconds\n", tDoneUpload - tStartUpload);
+	}
     else
+	{
         DebugPrintf(2, "Download Finished... taking %d seconds\n", tDoneUpload - tStartUpload);
+	}
 
     if(IspEnvironment->DoNotStart == 0)
     {
@@ -1226,7 +1230,7 @@ int NxpDownload(ISP_ENVIRONMENT *IspEnvironment)
 #endif // LPC_SUPPORT
 
 
-unsigned long ReturnValueLpcRamStart(ISP_ENVIRONMENT *IspEnvironment)
+unsigned long ReturnValueLpcRamStart(ISP_ENVIRONMENT ^IspEnvironment)
 {
   if(LPCtypes[IspEnvironment->DetectedDevice].ChipVariant == CHIP_VARIANT_LPC2XXX)
   {
@@ -1249,7 +1253,7 @@ unsigned long ReturnValueLpcRamStart(ISP_ENVIRONMENT *IspEnvironment)
 }
 
 
-unsigned long ReturnValueLpcRamBase(ISP_ENVIRONMENT *IspEnvironment)
+unsigned long ReturnValueLpcRamBase(ISP_ENVIRONMENT ^IspEnvironment)
 {
   if(LPCtypes[IspEnvironment->DetectedDevice].ChipVariant == CHIP_VARIANT_LPC2XXX)
   {

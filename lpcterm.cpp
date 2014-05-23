@@ -42,7 +42,7 @@ Portions Copyright (c) by Aeolus Development 2004 http://www.aeolusdevelopment.c
 /***************************** Terminal *********************************/
 /**  Acts as a simple dumb terminal. Press 'ESC' to exit.
 */
-BOOL CheckTerminalParameters(ISP_ENVIRONMENT *IspEnvironment, char* pstr)
+BOOL CheckTerminalParameters(ISP_ENVIRONMENT ^IspEnvironment, char* pstr)
 {
     if (stricmp(pstr, "-localecho") == 0)
     {
@@ -69,7 +69,7 @@ BOOL CheckTerminalParameters(ISP_ENVIRONMENT *IspEnvironment, char* pstr)
     return FALSE;
 }
 
-void Terminal(ISP_ENVIRONMENT *IspEnvironment)
+void Terminal(ISP_ENVIRONMENT ^IspEnvironment)
 {
     if (IspEnvironment->TerminalAfterUpload || IspEnvironment->TerminalOnly)
     {

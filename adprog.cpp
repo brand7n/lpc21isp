@@ -46,7 +46,7 @@ backspace and reads back the microcontrollers response.  Performs
 multiple retries. Exits the program on error, returns to caller in the
 case of success.
 */
-static void AnalogDevicesSync(ISP_ENVIRONMENT *IspEnvironment)
+static void AnalogDevicesSync(ISP_ENVIRONMENT ^IspEnvironment)
 {
     BINARY sync;                        /* Holds sync command.          */
     AD_SYNC_RESPONSE response;          /* Response from micro.         */
@@ -122,7 +122,7 @@ the packet.
 is zero.
 \param[out] packet that will be filled.
 */
-static void AnalogDevicesFormPacket(ISP_ENVIRONMENT *IspEnvironment,
+static void AnalogDevicesFormPacket(ISP_ENVIRONMENT ^IspEnvironment,
                                                 char cmd, int no_bytes, unsigned int address,
                                                 const void *data, AD_PACKET *packet)
 {
@@ -212,7 +212,7 @@ couple of times if needed but fail by exiting the program if no ACK is
 forthcoming.
 \param [in] packet the packet to send.
 */
-static void AnalogDevicesSendPacket(ISP_ENVIRONMENT *IspEnvironment,
+static void AnalogDevicesSendPacket(ISP_ENVIRONMENT ^IspEnvironment,
                                                 const AD_PACKET * packet)
 {
     BINARY response;
@@ -255,7 +255,7 @@ static void AnalogDevicesSendPacket(ISP_ENVIRONMENT *IspEnvironment,
 /**  Erase the Analog Devices micro.  We take the simple way out and
 just erase the whole thing.
 */
-static void AnalogDevicesErase(ISP_ENVIRONMENT *IspEnvironment)
+static void AnalogDevicesErase(ISP_ENVIRONMENT ^IspEnvironment)
 {
     BINARY pages;
     AD_PACKET packet;
@@ -275,7 +275,7 @@ static void AnalogDevicesErase(ISP_ENVIRONMENT *IspEnvironment)
 \param [in] address where to start placing the program.
 \param [in] bytes the size of the progrm to download.
 */
-static void AnalogDevicesWrite(ISP_ENVIRONMENT *IspEnvironment,
+static void AnalogDevicesWrite(ISP_ENVIRONMENT ^IspEnvironment,
                                          const void *data, long address, size_t bytes)
 {
     AD_PACKET packet;
@@ -307,7 +307,7 @@ static void AnalogDevicesWrite(ISP_ENVIRONMENT *IspEnvironment,
 * \ToDo: possible to implement the return value instead of calling
 * exit() in sub-functions
 */
-int AnalogDevicesDownload(ISP_ENVIRONMENT *IspEnvironment)
+int AnalogDevicesDownload(ISP_ENVIRONMENT ^IspEnvironment)
 {
     AnalogDevicesSync(IspEnvironment);
     AnalogDevicesErase(IspEnvironment);

@@ -352,17 +352,17 @@ char * pRxTmpBuf = RxTmpBuf;
 int debug_level = 2;
 #endif
 
-static void ControlModemLines(ISP_ENVIRONMENT *IspEnvironment, unsigned char DTR, unsigned char RTS);
+static void ControlModemLines(ISP_ENVIRONMENT ^IspEnvironment, unsigned char DTR, unsigned char RTS);
 static unsigned char Ascii2Hex(unsigned char c);
 
-#ifdef COMPILE_FOR_WINDOWS
-static void SerialTimeoutSet(ISP_ENVIRONMENT *IspEnvironment, unsigned timeout_milliseconds);
-static int SerialTimeoutCheck(ISP_ENVIRONMENT *IspEnvironment);
+#ifdef COMPILE_FOR_WINDOWS 
+static void SerialTimeoutSet(ISP_ENVIRONMENT ^IspEnvironment, unsigned timeout_milliseconds);
+static int SerialTimeoutCheck(ISP_ENVIRONMENT ^IspEnvironment);
 #endif // COMPILE_FOR_WINDOWS
 
-static int AddFileHex(ISP_ENVIRONMENT *IspEnvironment, const char *arg);
-static int AddFileBinary(ISP_ENVIRONMENT *IspEnvironment, const char *arg);
-static int LoadFile(ISP_ENVIRONMENT *IspEnvironment, const char *filename, int FileFormat);
+//static int AddFileHex(ISP_ENVIRONMENT ^IspEnvironment, const char *arg);
+static int AddFileBinary(ISP_ENVIRONMENT ^IspEnvironment, const char *arg);
+static int LoadFile(ISP_ENVIRONMENT ^IspEnvironment, const char *filename, int FileFormat);
 
 #define ERR_RECORD_TYPE_LOADFILE	55 /** File record type not yet implemented. */
 #define ERR_ALLOC_FILE_LIST 60
@@ -376,12 +376,64 @@ static int LoadFile(ISP_ENVIRONMENT *IspEnvironment, const char *filename, int F
 #define ERR_FILE_WRITE_BIN	68	/**< Couldn't write debug binary file to disk. How's that for ironic? */
 #define ERR_MEMORY_RANGE    69  /**< Out of memory range. */
 
+using FTD2XX_NET::FTDI;
+
 /************* Portability layer. Serial and console I/O differences    */
 /* are taken care of here.                                              */
+#ifdef USE_FTDI
+static BOOL FtdiRead(
+	ISP_ENVIRONMENT ^IspEnvironment,
+	LPVOID lpBuffer,
+	DWORD bytesToRead,
+	LPDWORD BytesRead
+)
+{
+	System::UInt32 myBytesRead = 0;
+	FTDI::FT_STATUS ftStatus = FTDI::FT_STATUS::FT_OK;
+	array<unsigned char> ^buf = gcnew array<unsigned char>(bytesToRead); 
+	ftStatus = IspEnvironment->myFtdiDevice.Read(buf, bytesToRead, myBytesRead);
+	if (ftStatus != FTDI::FT_STATUS::FT_OK)
+	{
+		return FALSE;
+	}
+	for (int i=0; i<myBytesRead; i++)
+	{
+		((unsigned char *)lpBuffer)[i] = buf[i];
+	}
+	*BytesRead = myBytesRead;
+	return TRUE;
+}
+
+static BOOL FtdiWrite(
+	ISP_ENVIRONMENT ^IspEnvironment,
+	const void *lpBuffer,
+	DWORD bytesToWrite,
+	LPDWORD BytesWritten
+)
+{
+	System::UInt32 myBytesWritten = 0;
+	FTDI::FT_STATUS ftStatus = FTDI::FT_STATUS::FT_OK;
+	array<unsigned char> ^buf = gcnew array<unsigned char>(bytesToWrite); 
+	for (int i=0; i<bytesToWrite; i++)
+	{
+		 buf[i] = ((unsigned char *)lpBuffer)[i];
+	}
+	ftStatus = IspEnvironment->myFtdiDevice.Write(buf, bytesToWrite, myBytesWritten);
+	if (ftStatus != FTDI::FT_STATUS::FT_OK)
+	{
+		return FALSE;
+	}
+	*BytesWritten = myBytesWritten;
+	return TRUE;
+}
+#define ReadFile(nope1, lpBuffer, bytesToRead, lpBytesRead, nope2) FtdiRead(IspEnvironment, lpBuffer, bytesToRead, lpBytesRead)
+#define WriteFile(nope1, lpBuffer, bytesToWrite, lpBytesWritten, nope2) FtdiWrite(IspEnvironment, lpBuffer, bytesToWrite, lpBytesWritten)
+#endif // USE_FTDI
 
 #if defined COMPILE_FOR_WINDOWS || defined COMPILE_FOR_CYGWIN
-static void OpenSerialPort(ISP_ENVIRONMENT *IspEnvironment)
+static void OpenSerialPort(ISP_ENVIRONMENT ^IspEnvironment)
 {
+#ifndef USE_FTDI
     DCB    dcb;
     COMMTIMEOUTS commtimeouts;
 
@@ -441,11 +493,12 @@ static void OpenSerialPort(ISP_ENVIRONMENT *IspEnvironment)
     commtimeouts.WriteTotalTimeoutMultiplier =    0;
     commtimeouts.WriteTotalTimeoutConstant   =    0;
     SetCommTimeouts(IspEnvironment->hCom, &commtimeouts);
+#endif // USE_FTDI
 }
 #endif // defined COMPILE_FOR_WINDOWS || defined COMPILE_FOR_CYGWIN
 
 #if defined COMPILE_FOR_LINUX
-static void OpenSerialPort(ISP_ENVIRONMENT *IspEnvironment)
+static void OpenSerialPort(ISP_ENVIRONMENT ^IspEnvironment)
 {
     IspEnvironment->fdCom = open(IspEnvironment->serial_port, O_RDWR | O_NOCTTY | O_NONBLOCK);
 
@@ -539,18 +592,21 @@ static void OpenSerialPort(ISP_ENVIRONMENT *IspEnvironment)
     }
 
 }
-#endif // defined COMPILE_FOR_LINUX
+#endif // define COMPILE_FOR_LINUX
 
 #if defined COMPILE_FOR_WINDOWS || defined COMPILE_FOR_CYGWIN
-static void CloseSerialPort(ISP_ENVIRONMENT *IspEnvironment)
+static void CloseSerialPort(ISP_ENVIRONMENT ^IspEnvironment)
 {
+#ifndef USE_FTDI
     CloseHandle(IspEnvironment->hCom);
+#else
+	IspEnvironment->myFtdiDevice.Close();
+#endif // USE_FTDI
 }
-
 #endif // defined COMPILE_FOR_WINDOWS || defined COMPILE_FOR_CYGWIN
 
 #if defined COMPILE_FOR_LINUX
-static void CloseSerialPort(ISP_ENVIRONMENT *IspEnvironment)
+static void CloseSerialPort(ISP_ENVIRONMENT ^IspEnvironment)
 {
     tcflush(IspEnvironment->fdCom, TCOFLUSH);
     tcflush(IspEnvironment->fdCom, TCIFLUSH);
@@ -566,7 +622,7 @@ static void CloseSerialPort(ISP_ENVIRONMENT *IspEnvironment)
 \param [in] s block to send.
 \param [in] n size of the block.
 */
-void SendComPortBlock(ISP_ENVIRONMENT *IspEnvironment, const void *s, size_t n)
+void SendComPortBlock(ISP_ENVIRONMENT ^IspEnvironment, const void *s, size_t n)
 {
 #if defined COMPILE_FOR_WINDOWS || defined COMPILE_FOR_CYGWIN
 
@@ -624,7 +680,7 @@ void SendComPortBlock(ISP_ENVIRONMENT *IspEnvironment, const void *s, size_t n)
 /**  Sends a string out the opened com port.
 \param [in] s string to send.
 */
-void SendComPort(ISP_ENVIRONMENT *IspEnvironment, const char *s)
+void SendComPort(ISP_ENVIRONMENT ^IspEnvironment, const char *s)
 {
     SendComPortBlock(IspEnvironment, s, strlen(s));
 }
@@ -633,7 +689,7 @@ void SendComPort(ISP_ENVIRONMENT *IspEnvironment, const char *s)
 /**  Performs a timer tick.  In this simple case all we do is count down
 with protection against underflow and wrapping at the low end.
 */
-static void SerialTimeoutTick(ISP_ENVIRONMENT *IspEnvironment)
+static void SerialTimeoutTick(ISP_ENVIRONMENT ^IspEnvironment)
 {
     if (IspEnvironment->serial_timeout_count <= 1)
     {
@@ -656,7 +712,7 @@ see SerialTimeout routines.
 \param [out] real_size pointer to a long that returns the amout of the
 buffer that is actually used.
 */
-static void ReceiveComPortBlock(ISP_ENVIRONMENT *IspEnvironment,
+static void ReceiveComPortBlock(ISP_ENVIRONMENT ^IspEnvironment,
                                           void *answer, unsigned long max_size,
                                           unsigned long *real_size)
 {
@@ -718,7 +774,7 @@ timeout.  Note that just because it is set in milliseconds doesn't mean
 that the granularity is that fine.  In many cases (particularly Linux) it
 will be coarser.
 */
-static void SerialTimeoutSet(ISP_ENVIRONMENT *IspEnvironment, unsigned timeout_milliseconds)
+static void SerialTimeoutSet(ISP_ENVIRONMENT ^IspEnvironment, unsigned timeout_milliseconds)
 {
 #if defined COMPILE_FOR_LINUX
     IspEnvironment->serial_timeout_count = timeout_milliseconds / 100;
@@ -736,7 +792,7 @@ static void SerialTimeoutSet(ISP_ENVIRONMENT *IspEnvironment, unsigned timeout_m
 \retval 1 if timer has run out.
 \retval 0 if timer still has time left.
 */
-static int SerialTimeoutCheck(ISP_ENVIRONMENT *IspEnvironment)
+static int SerialTimeoutCheck(ISP_ENVIRONMENT ^IspEnvironment)
 {
     if (IspEnvironment->serial_timeout_count == 0)
     {
@@ -744,7 +800,6 @@ static int SerialTimeoutCheck(ISP_ENVIRONMENT *IspEnvironment)
     }
     return 0;
 }
-
 
 #if defined COMPILE_FOR_LINUX || defined COMPILE_FOR_CYGWIN
 /***************************** getch ************************************/
@@ -853,7 +908,7 @@ error rather abruptly terminates the program.
 \param [in] DTR the state to set the DTR line to.
 \param [in] RTS the state to set the RTS line to.
 */
-static void ControlModemLines(ISP_ENVIRONMENT *IspEnvironment, unsigned char DTR, unsigned char RTS)
+static void ControlModemLines(ISP_ENVIRONMENT ^IspEnvironment, unsigned char DTR, unsigned char RTS)
 {
     //handle wether to invert the control lines:
     DTR ^= IspEnvironment->ControlLinesInverted;
@@ -903,8 +958,12 @@ static void ControlModemLines(ISP_ENVIRONMENT *IspEnvironment, unsigned char DTR
     {
         DebugPrintf(1, "ioctl get failed\n");
     }
-
 #endif // defined COMPILE_FOR_LINUX
+
+#ifdef USE_FTDI
+	IspEnvironment->myFtdiDevice.SetDTR(DTR);
+	IspEnvironment->myFtdiDevice.SetRTS(RTS);
+#else
 #if defined COMPILE_FOR_WINDOWS || defined COMPILE_FOR_CYGWIN
 
     if (DTR) EscapeCommFunction(IspEnvironment->hCom, SETDTR);
@@ -914,6 +973,7 @@ static void ControlModemLines(ISP_ENVIRONMENT *IspEnvironment, unsigned char DTR
     else    EscapeCommFunction(IspEnvironment->hCom, CLRRTS);
 
 #endif // defined COMPILE_FOR_WINDOWS || defined COMPILE_FOR_CYGWIN
+#endif // defined FTDI
 
 #if defined COMPILE_FOR_LPC21
     LPC_RESET(DTR);
@@ -923,11 +983,10 @@ static void ControlModemLines(ISP_ENVIRONMENT *IspEnvironment, unsigned char DTR
     DebugPrintf(3, "DTR (%d), RTS (%d)\n", DTR, RTS);
 }
 
-
 /***************************** ClearSerialPortBuffers********************/
 /**  Empty the serial port buffers.  Cleans things to a known state.
 */
-void ClearSerialPortBuffers(ISP_ENVIRONMENT *IspEnvironment)
+void ClearSerialPortBuffers(ISP_ENVIRONMENT ^IspEnvironment)
 {
 #if defined COMPILE_FOR_LINUX
     /* variables to store the current tty state, create a new one */
@@ -943,12 +1002,15 @@ void ClearSerialPortBuffers(ISP_ENVIRONMENT *IspEnvironment)
     /* reset the tty to its original settings */
     tcsetattr(IspEnvironment->fdCom, TCSADRAIN, &origtty);
 #endif // defined COMPILE_FOR_LINUX
+#ifdef USE_FTDI
+	IspEnvironment->myFtdiDevice.Purge(FTDI::FT_PURGE::FT_PURGE_RX | FTDI::FT_PURGE::FT_PURGE_TX);
+#else
 #if defined COMPILE_FOR_WINDOWS || defined COMPILE_FOR_CYGWIN
     PurgeComm(IspEnvironment->hCom, PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR);
 #endif // defined COMPILE_FOR_WINDOWS || defined COMPILE_FOR_CYGWIN
+#endif
 }
 #endif // !defined COMPILE_FOR_LPC21
-
 
 #if defined COMPILE_FOR_LINUX
 /***************************** Sleep ************************************/
@@ -973,8 +1035,6 @@ void Sleep(unsigned long MilliSeconds)
 }
 */
 #endif // defined COMPILE_FOR_LPC21
-
-
 
 /************* Applicationlayer.                                        */
 
@@ -1023,7 +1083,7 @@ returning.
 \param [in] timeOutMilliseconds the maximum amount of time to wait before
 reading with an incomplete buffer.
 */
-void ReceiveComPort(ISP_ENVIRONMENT *IspEnvironment,
+void ReceiveComPort(ISP_ENVIRONMENT ^IspEnvironment,
                                     const char *Ans, unsigned long MaxSize,
                                     unsigned long *RealSize, unsigned long WantedNr0x0A,
                                     unsigned timeOutMilliseconds)
@@ -1075,7 +1135,6 @@ void ReceiveComPort(ISP_ENVIRONMENT *IspEnvironment,
     DumpString(3, Answer, (*RealSize), tmp_string);
 }
 
-
 #if !defined COMPILE_FOR_LPC21
 
 /***************************** ReceiveComPortBlockComplete **************/
@@ -1087,7 +1146,7 @@ block is completely filled or the timeout period has passed
 completing the read.
 \return 0 if successful, non-zero otherwise.
 */
-int ReceiveComPortBlockComplete(ISP_ENVIRONMENT *IspEnvironment,
+int ReceiveComPortBlockComplete(ISP_ENVIRONMENT ^IspEnvironment,
                                                     void *block, size_t size, unsigned timeout)
 {
     unsigned long realsize = 0, read;
@@ -1124,7 +1183,7 @@ it easier to modify the command line parsing in the future.
 \param [in] argc the number of arguments.
 \param [in] argv an array of pointers to the arguments.
 */
-static void ReadArguments(ISP_ENVIRONMENT *IspEnvironment, unsigned int argc, char *argv[])
+static void ReadArguments(ISP_ENVIRONMENT ^IspEnvironment, unsigned int argc, char *argv[])
 {
     unsigned int i;
 
@@ -1251,7 +1310,7 @@ static void ReadArguments(ISP_ENVIRONMENT *IspEnvironment, unsigned int argc, ch
             }
 #endif
 
-            if(*argv[i] == '-') DebugPrintf( 2, "Unknown command line option: \"%s\"\n", argv[i]);
+			if(*argv[i] == '-') { DebugPrintf( 2, "Unknown command line option: \"%s\"\n", argv[i]); }
             else
             {
                 int ret_val;
@@ -1288,8 +1347,11 @@ static void ReadArguments(ISP_ENVIRONMENT *IspEnvironment, unsigned int argc, ch
         debug_level = (debug_level < 2) ? 2 : debug_level;
     }
 
+// doesn't like the new DebugPrintf macro...not needed anyhow
+/*
     if (argc < 5)
     {
+
         DebugPrintf(2, "\n"
                        "Portable command line ISP\n"
                        "for NXP LPC1000 / LPC2000 family and Analog Devices ADUC 70xx\n"
@@ -1331,7 +1393,7 @@ static void ReadArguments(ISP_ENVIRONMENT *IspEnvironment, unsigned int argc, ch
 
         exit(1);
     }
-
+*/
     if (IspEnvironment->micro == NXP_ARM)
     {
         // If StringOscillator is bigger than 100 MHz, there seems to be something wrong
@@ -1348,7 +1410,7 @@ static void ReadArguments(ISP_ENVIRONMENT *IspEnvironment, unsigned int argc, ch
 run mode.
 \param [in] mode the mode to leave the target in.
 */
-void ResetTarget(ISP_ENVIRONMENT *IspEnvironment, TARGET_MODE mode)
+void ResetTarget(ISP_ENVIRONMENT ^IspEnvironment, TARGET_MODE mode)
 {
     if (IspEnvironment->ControlLines)
     {
@@ -1406,7 +1468,8 @@ static unsigned char Ascii2Hex(unsigned char c)
     }
 
     DebugPrintf(1, "Wrong Hex-Nibble %c (%02X)\n", c, c);
-    exit(1);
+    //exit(1); XXX
+	while (1) {}
 
     return 0;  // this "return" will never be reached, but some compilers give a warning if it is not present
 }
@@ -1418,12 +1481,12 @@ static unsigned char Ascii2Hex(unsigned char c)
 \param [in] arg The argument that was passed to the program as a file name.
 \return 0 on success, an error code otherwise.
 */
-static int AddFileHex(ISP_ENVIRONMENT *IspEnvironment, const char *arg)
+int AddFileHex(ISP_ENVIRONMENT ^IspEnvironment, const char *arg)
 {
     FILE_LIST *entry;
 
     // Add file to list.  If cannot allocate storage for node return an error.
-    entry = malloc(sizeof(FILE_LIST));
+    entry = (FILE_LIST *)malloc(sizeof(FILE_LIST));
     if( entry == 0)
     {
         DebugPrintf(1, "Error %d Could not allocated memory for file node %s\n", ERR_ALLOC_FILE_LIST, arg);
@@ -1446,12 +1509,12 @@ static int AddFileHex(ISP_ENVIRONMENT *IspEnvironment, const char *arg)
 \param [in] arg The argument that was passed to the program as a file name.
 \return 0 on success, an error code otherwise.
 */
-static int AddFileBinary(ISP_ENVIRONMENT *IspEnvironment, const char *arg)
+static int AddFileBinary(ISP_ENVIRONMENT ^IspEnvironment, const char *arg)
 {
     FILE_LIST *entry;
 
     // Add file to list. If cannot allocate storage for node return an error.
-    entry = malloc(sizeof(FILE_LIST));
+    entry = (FILE_LIST *)malloc(sizeof(FILE_LIST));
     if( entry == 0)
     {
         DebugPrintf( 1, "Error %d Could not allocated memory for file node %s\n", ERR_ALLOC_FILE_LIST, arg);
@@ -1468,7 +1531,7 @@ static int AddFileBinary(ISP_ENVIRONMENT *IspEnvironment, const char *arg)
 }
 
 #if 0
-void ReadHexFile(ISP_ENVIRONMENT *IspEnvironment)
+void ReadHexFile(ISP_ENVIRONMENT ^IspEnvironment)
 {
     LoadFile(IspEnvironment);
 
@@ -1684,7 +1747,7 @@ void ReadHexFile(ISP_ENVIRONMENT *IspEnvironment)
 \param [in] FileFormat	the format of the file to read in (FORMAT_HEX or FORMAT_BINARY)
 \return 0 if successful, otherwise an error code.
 */
-static int LoadFile(ISP_ENVIRONMENT *IspEnvironment, const char *filename, int FileFormat)
+static int LoadFile(ISP_ENVIRONMENT ^IspEnvironment, const char *filename, int FileFormat)
 {
     int            fd;
     int            i;
@@ -1804,7 +1867,7 @@ static int LoadFile(ISP_ENVIRONMENT *IspEnvironment, const char *filename, int F
                 {
                     if(!BinaryMemSize) BinaryMemSize = FileLength * 2;
                     else BinaryMemSize <<= 1;
-                    IspEnvironment->BinaryContent = realloc(IspEnvironment->BinaryContent, BinaryMemSize);
+                    IspEnvironment->BinaryContent = (BINARY *)realloc(IspEnvironment->BinaryContent, BinaryMemSize);
                 }
 
                 // We need to know, what the highest address is,
@@ -1958,7 +2021,7 @@ static int LoadFile(ISP_ENVIRONMENT *IspEnvironment, const char *filename, int F
 \param [in] file simple linked list of files to read
 \return 0 if successful, otherwise an error code.
 */
-static int LoadFiles1(ISP_ENVIRONMENT *IspEnvironment, const FILE_LIST *file)
+static int LoadFiles1(ISP_ENVIRONMENT ^IspEnvironment, const FILE_LIST *file)
 {
     int ret_val;
 
@@ -1996,7 +2059,7 @@ static int LoadFiles1(ISP_ENVIRONMENT *IspEnvironment, const FILE_LIST *file)
 \param [in] file simple linked list of files to read
 \return 0 if successful, otherwise an error code.
 */
-static int LoadFiles(ISP_ENVIRONMENT *IspEnvironment)
+static int LoadFiles(ISP_ENVIRONMENT ^IspEnvironment)
 {
 	int ret_val;
 
@@ -2032,7 +2095,7 @@ static int LoadFiles(ISP_ENVIRONMENT *IspEnvironment)
 #endif // !defined COMPILE_FOR_LPC21
 
 #ifndef COMPILE_FOR_LPC21
-int PerformActions(ISP_ENVIRONMENT *IspEnvironment)
+int PerformActions(ISP_ENVIRONMENT ^IspEnvironment)
 {
     int downloadResult = -1;
 
@@ -2041,7 +2104,10 @@ int PerformActions(ISP_ENVIRONMENT *IspEnvironment)
     /* Download requested, read in the input file.                  */
     if (IspEnvironment->ProgramChip)
     {
-        LoadFiles(IspEnvironment);
+        if (LoadFiles(IspEnvironment) != 0 )
+		{
+			return downloadResult;
+		}
     }
 
     OpenSerialPort(IspEnvironment);   /* Open the serial port to the microcontroller. */
@@ -2112,21 +2178,32 @@ int AppDoProgram(int argc, char *argv[])
 int main(int argc, char *argv[])
 #endif
 {
+	char strOscStorage[] = "12000";
+	char baudStorage[] = "230400";
+
     ISP_ENVIRONMENT IspEnvironment;
+	IspEnvironment.StringOscillator = strOscStorage; // done this way to fix conversion to C++/CLI
+	IspEnvironment.baud_rate = baudStorage;
+	IspEnvironment.serial_port = NULL;
 
     // Initialize debug level
     debug_level = 2;
 
     // Initialize ISP Environment
-    memset(&IspEnvironment, 0, sizeof(IspEnvironment));       // Clear the IspEnviroment to a known value
+    //memset(&IspEnvironment, 0, sizeof(IspEnvironment));       // Clear the IspEnviroment to a known value
     IspEnvironment.micro       = NXP_ARM;                     // Default Micro
     IspEnvironment.FileFormat  = FORMAT_HEX;                  // Default File Format
     IspEnvironment.ProgramChip = TRUE;                        // Default to Programming the chip
     IspEnvironment.nQuestionMarks = 100;
     IspEnvironment.DoNotStart = 0;
-    ReadArguments(&IspEnvironment, argc, argv);               // Read and parse the command line
+	IspEnvironment.WipeDevice = 1;
+	IspEnvironment.Verify = 1;
+	IspEnvironment.ControlLines = 1;
 
-    return PerformActions(&IspEnvironment);                   // Do as requested !
+	AddFileHex(%IspEnvironment, "test.hex");
+    //ReadArguments(%IspEnvironment, argc, argv);               // Read and parse the command line
+
+    return PerformActions(%IspEnvironment);                   // Do as requested !
 }
 
 #endif // !defined COMPILE_FOR_LPC21
@@ -2173,7 +2250,7 @@ int lpctest(char* FileName)
     debug_level = 2;
 
     // Initialize ISP Environment
-    memset(&IspEnvironment, 0, sizeof(IspEnvironment));        // Clear the IspEnviroment to a known value
+    //memset(&IspEnvironment, 0, sizeof(IspEnvironment));        // Clear the IspEnviroment to a known value
     IspEnvironment.micro        = NXP_ARM;                     // Default Micro
     IspEnvironment.FileFormat   = FORMAT_HEX;                  // Default File Format
     IspEnvironment.ProgramChip  = TRUE;                        // Default to Programming the chip
@@ -2185,6 +2262,6 @@ int lpctest(char* FileName)
     IspEnvironment.DoNotStart = 0;
     strcpy(IspEnvironment.StringOscillator, "25000");
 
-    return PerformActions(&IspEnvironment);                    // Do as requested !
+    return PerformActions(%IspEnvironment);                    // Do as requested !
 }
 #endif

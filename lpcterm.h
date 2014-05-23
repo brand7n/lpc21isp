@@ -39,5 +39,5 @@ Portions Copyright (c) by Aeolus Development 2004 http://www.aeolusdevelopment.c
 
 typedef int BOOL;
 
-void Terminal(ISP_ENVIRONMENT *IspEnvironment);
-BOOL CheckTerminalParameters(ISP_ENVIRONMENT *IspEnvironment, char* pstr);
+void Terminal(ISP_ENVIRONMENT ^IspEnvironment);
+BOOL CheckTerminalParameters(ISP_ENVIRONMENT ^IspEnvironment, char* pstr);

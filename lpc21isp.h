@@ -30,7 +30,8 @@ Portions Copyright (c) by Aeolus Development 2004 http://www.aeolusdevelopment.c
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-// #define INTEGRATED_IN_WIN_APP
+#define INTEGRATED_IN_WIN_APP
+//#define USE_FTDI
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #define COMPILE_FOR_WINDOWS
@@ -61,7 +62,7 @@ Portions Copyright (c) by Aeolus Development 2004 http://www.aeolusdevelopment.c
 
 #ifndef COMPILE_FOR_LPC21
 #define AD_SUPPORT
-#define TERMINAL_SUPPORT
+//#define TERMINAL_SUPPORT
 #endif
 
 #if defined COMPILE_FOR_WINDOWS || defined COMPILE_FOR_CYGWIN
@@ -151,7 +152,8 @@ struct file_list
     char hex_flag;          /**< True if the input file is hex.	*/
 };
 
-typedef struct
+//typedef struct
+ref struct ISP_ENVIRONMENT
 {
 #if !defined COMPILE_FOR_LPC21
     TARGET micro;                                // The type of micro that will be programmed.
@@ -186,7 +188,7 @@ typedef struct
                                            * microcontroller. Read from the
                                            * command line.                        */
 
-    char StringOscillator[6];           /**< Holds representation of oscillator
+    char *StringOscillator;             /**< Holds representation of oscillator
                                            * speed from the command line.         */
 
     BINARY *FileContent;
@@ -215,7 +217,9 @@ typedef struct
 
     unsigned serial_timeout_count;   /**< Local used to track timeouts on serial port read. */
 
-} ISP_ENVIRONMENT;
+	// FTDI stuff
+	FTD2XX_NET::FTDI myFtdiDevice;
+}; //ISP_ENVIRONMENT;
 
 #if defined COMPILE_FOR_LPC21
 
@@ -225,25 +229,54 @@ typedef struct
 extern int debug_level;
 
 #if defined INTEGRATED_IN_WIN_APP
+public delegate int StringOutDelegate(int level, System::String ^data);
+public ref class Callbacks
+{
+public:
+	static StringOutDelegate ^myFp;
+	static inline void DebugOut(int level, char *buf)
+	{
+		if (level <= debug_level)
+		{
+			System::String^ clistr = gcnew System::String(buf);
+			myFp->Invoke(level, clistr);
+		}
+	}
+	static inline void Exception(int exception_level)
+	{
+		myFp->Invoke(0, "EXCEPTION\n");
+	}
+	static inline int Sync(int trials)
+	{
+		myFp->Invoke(trials, "SYNC\n");
+		return 1;
+	}
+	static inline void Written(int size)
+	{
+		//myFp->Invoke(size, "WRITTEN\n");
+	}
+};
+//#define DebugPrintf AppDebugPrintf
+#define DebugPrintf(level, fmt, ...) { char buffer[1024]; sprintf_s(buffer, 1024, fmt, __VA_ARGS__); Callbacks::DebugOut(level, buffer); }
+//void AppDebugPrintf(int level, const char *fmt, ...);
 
-#define DebugPrintf AppDebugPrintf
-void AppDebugPrintf(int level, const char *fmt, ...);
-
-#define exit(val)   AppException(val)
-void AppException(int exception_level);
-
+//#define exit(val)   AppException(val)
+#define exit(val)   Callbacks::Exception(val)
+//void AppException(int exception_level);
 int AppDoProgram(int argc, char *argv[]);
 
 #define Exclude_kbhit 1
-int AppSyncing(int trials);
-void AppWritten(int size);
+//int AppSyncing(int trials);
+#define AppSyncing(trials) Callbacks::Sync(trials)   
+//void AppWritten(int size);
+#define AppWritten(size) Callbacks::Written(size)
 
 #else
 void DebugPrintf(int level, const char *fmt, ...);
 //#define DebugPrintf(level, ...) if (level <= debug_level) { TRACE( __VA_ARGS__ ); }
 #endif
 
-void ClearSerialPortBuffers(ISP_ENVIRONMENT *IspEnvironment);
+void ClearSerialPortBuffers(ISP_ENVIRONMENT ^IspEnvironment);
 
 #endif
 
@@ -272,18 +305,25 @@ debug levels
 */
 
 
-void ReceiveComPort(ISP_ENVIRONMENT *IspEnvironment,
+void ReceiveComPort(ISP_ENVIRONMENT ^IspEnvironment,
                     const char *Ans, unsigned long MaxSize,
                     unsigned long *RealSize, unsigned long WantedNr0x0A,
                     unsigned timeOutMilliseconds);
 void PrepareKeyboardTtySettings(void);
 void ResetKeyboardTtySettings(void);
-void ResetTarget(ISP_ENVIRONMENT *IspEnvironment, TARGET_MODE mode);
+void ResetTarget(ISP_ENVIRONMENT ^IspEnvironment, TARGET_MODE mode);
 
 void DumpString(int level, const void *s, size_t size, const char *prefix_string);
-void SendComPort(ISP_ENVIRONMENT *IspEnvironment, const char *s);
-void SendComPortBlock(ISP_ENVIRONMENT *IspEnvironment, const void *s, size_t n);
-int ReceiveComPortBlockComplete(ISP_ENVIRONMENT *IspEnvironment, void *block, size_t size, unsigned timeout);
-void ClearSerialPortBuffers(ISP_ENVIRONMENT *IspEnvironment);
+void SendComPort(ISP_ENVIRONMENT ^IspEnvironment, const char *s);
+void SendComPortBlock(ISP_ENVIRONMENT ^IspEnvironment, const void *s, size_t n);
+int ReceiveComPortBlockComplete(ISP_ENVIRONMENT ^IspEnvironment, void *block, size_t size, unsigned timeout);
+void ClearSerialPortBuffers(ISP_ENVIRONMENT ^IspEnvironment);
 
+void OpenSerialPort(ISP_ENVIRONMENT ^IspEnvironment);
+void CloseSerialPort(ISP_ENVIRONMENT ^IspEnvironment);
+void ReceiveComPortBlock(ISP_ENVIRONMENT ^IspEnvironment,
+                                          void *answer, unsigned long max_size,
+                                          unsigned long *real_size);
+int AddFileHex(ISP_ENVIRONMENT ^IspEnvironment, const char *arg);
+int PerformActions(ISP_ENVIRONMENT ^IspEnvironment);  
 int lpctest(char* FileName);
